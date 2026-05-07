@@ -6,23 +6,38 @@ from typing import Iterable
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from sklearn.feature_extraction.text import CountVectorizer
 
-def build_tfidf_vectorizer(max_features: int = 5000) -> TfidfVectorizer:
-    """Create a configurable TF-IDF vectorizer."""
-    return TfidfVectorizer(max_features=max_features, ngram_range=(1, 2))
+def build_bow_vectorizer(
+    max_features: int = 5000,
+    ngram_range: tuple[int, int] = (1, 2),
+    min_df:int =2,
+    max_df:float = 0.95,
+) -> CountVectorizer:
+    return CountVectorizer(
+        max_features=max_features, 
+        ngram_range=ngram_range, 
+        min_df=min_df, 
+        max_df=max_df,
+        lowercase=False,
+    )
 
-
-def extract_features(
-    texts: Iterable[str],
-    vectorizer: TfidfVectorizer | None = None,
-):
-    """Fit-transform text inputs into numeric features."""
-    model = vectorizer or build_tfidf_vectorizer()
-    features = model.fit_transform(texts)
-    return features, model
-
-
-def transform_features(texts: Iterable[str], vectorizer: TfidfVectorizer):
-    """Transform texts with an already-fitted vectorizer."""
-    return vectorizer.transform(texts)
+def build_tfidf_vectorizer(
+    max_features: int = 5000,
+    ngram_range: tuple[int,int] = (1,2),
+    min_df:int =2,
+    max_df:float = 0.95,
+    
+) -> TfidfVectorizer:
+    return TfidfVectorizer(
+        max_features=max_features, 
+        ngram_range=ngram_range, 
+        min_df=min_df, 
+        max_df=max_df,
+        lowercase = False,
+        sublinear_tf = True,
+        norm = 'l2',
+        use_idf = True,
+        smooth_idf = True,
+    )
 
