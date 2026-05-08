@@ -1,25 +1,29 @@
 import numpy as np
 from scipy.sparse import issparse
-from sklearn.feature_selection import SelectKBest, chi2, mutual_info_classif
+from sklearn.feature_selection import (
+    SelectKBest,
+    chi2 as sk_chi2,
+    mutual_info_classif as sk_mutual_info_classif,
+)
 
 
-def chi2(X_train, y_train, X_test, k: int):
+def Select_chi2(X_train, y_train, X_test, k: int):
     """Select top-k features using Chi-square."""
-    selector = SelectKBest(score_func=chi2, k=k)
+    selector = SelectKBest(score_func=sk_chi2, k=k)
     X_train_sel = selector.fit_transform(X_train, y_train)
     X_test_sel = selector.transform(X_test)
     return X_train_sel, X_test_sel, selector
 
 
-def mi(X_train, y_train, X_test, k: int):
+def Select_mi(X_train, y_train, X_test, k: int):
     """Select top-k features using Mutual Information."""
-    selector = SelectKBest(score_func=mutual_info_classif, k=k)
+    selector = SelectKBest(score_func=sk_mutual_info_classif, k=k)
     X_train_sel = selector.fit_transform(X_train, y_train)
     X_test_sel = selector.transform(X_test)
     return X_train_sel, X_test_sel, selector
 
 
-def fisher_score(X, y):
+def Fisher_score(X, y):
     """
     Compute Fisher score for each feature.
 
@@ -51,28 +55,40 @@ def fisher_score(X, y):
     return scores
 
 
-def fisher(X_train, y_train, X_test, k: int):
+def Select_fisher(X_train, y_train, X_test, k: int):
     """Select top-k features using Fisher score ranking."""
-    scores = fisher_score(X_train, y_train)
+    scores = Fisher_score(X_train, y_train)
     top_idx = np.argsort(scores)[::-1][:k]
     X_train_sel = X_train[:, top_idx]
     X_test_sel = X_test[:, top_idx]
     return X_train_sel, X_test_sel, top_idx
 
 
-def select_features(X_train, y_train, X_test, method: str, k: int):
+def select_features(
+    X_train,
+    y_train,
+    X_test,
+    method: str = "chi2",
+    k: int = 1000,
+):
     """
-    Generic selector wrapper.
+    Generic selector wrapper: returns ``(X_train_selected, X_test_selected)``.
 
-    method: "chi2" | "mi" | "fisher"
+    method: ``"chi2"`` | ``"mi"`` | ``"fisher"``
+
+    For the fitted selector or Fisher indices, use ``Select_chi2``, ``Select_mi``, or
+    ``Select_fisher`` directly (they return a third value).
     """
     method = method.lower().strip()
 
     if method == "chi2":
-        return chi2(X_train, y_train, X_test, k)
+        xtr, xte, _ = Select_chi2(X_train, y_train, X_test, k)
+        return xtr, xte
     if method in {"mi", "mutual_info", "mutual-information"}:
-        return mi(X_train, y_train, X_test, k)
+        xtr, xte, _ = Select_mi(X_train, y_train, X_test, k)
+        return xtr, xte
     if method == "fisher":
-        return fisher(X_train, y_train, X_test, k)
+        xtr, xte, _ = Select_fisher(X_train, y_train, X_test, k)
+        return xtr, xte
 
     raise ValueError("method must be one of: 'chi2', 'mi', 'fisher'")
