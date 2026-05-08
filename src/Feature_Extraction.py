@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from sklearn.feature_extraction.text import CountVectorizer
@@ -50,3 +49,18 @@ def tfidf(
     X_test_tfidf = vectorizer.transform(X_test)
 
     return X_train_tfidf, X_test_tfidf
+
+
+def vectorize(X_train, X_test, method: str = "tfidf", **kwargs):
+    """
+    Single entry point for text vectorization.
+
+    method: ``"tfidf"`` (default) or ``"bow"`` / ``"count"``.
+    Extra keyword arguments are passed to ``tfidf`` or ``bow_vectorizer``.
+    """
+    m = method.lower().strip()
+    if m == "tfidf":
+        return tfidf(X_train, X_test, **kwargs)
+    if m in {"bow", "count", "bag_of_words"}:
+        return bow_vectorizer(X_train, X_test, **kwargs)
+    raise ValueError("method must be 'tfidf' or 'bow'")
