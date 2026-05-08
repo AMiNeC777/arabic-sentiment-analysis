@@ -49,7 +49,10 @@ def extract_fasttext_features(
     model: FastText | None = None,
 ) -> np.ndarray:
     model = model or load_aravec_model()
-    
+    texts = list(texts)
+    if not texts:
+        return np.empty((0, model.vector_size), dtype=np.float32)
+
     rows = [_document_vector(model, _tokenize_arabic(text)) for text in texts]
     return np.vstack(rows)
 
@@ -81,6 +84,8 @@ def extract_arabert_features(
     tokenizer, model = _load_arabert()
     device = next(model.parameters()).device
     texts = list(texts)
+    if not texts:
+        return np.empty((0, model.config.hidden_size), dtype=np.float32)
     all_vecs: list[np.ndarray] = []
     with torch.no_grad():
         for i in range(0, len(texts), batch_size):
