@@ -1,0 +1,48 @@
+{
+  "tweets_n": 10006,
+  "reviews_n": 105698,
+  "tweet_chars_raw": {
+    "mean": 83.6333,
+    "median": 86.0,
+    "stdev": 33.9997
+  },
+  "tweet_chars_clean": {
+    "mean": 78.8705,
+    "median": 80.0,
+    "stdev": 33.8706
+  },
+  "tweet_tok_raw": {
+    "mean": 14.1919,
+    "median": 14.0,
+    "stdev": 6.1747
+  },
+  "tweet_tok_clean": {
+    "mean": 14.1549,
+    "median": 14.0,
+    "stdev": 6.0783
+  },
+  "tweet_pct_shorter": 6.377030882215413,
+  "tweet_empty": 5,
+  "review_chars_raw": {
+    "mean": 137.1143,
+    "median": 96.0,
+    "stdev": 137.7588
+  },
+  "review_chars_clean": {
+    "mean": 129.9599,
+    "median": 91.0,
+    "stdev": 132.2359
+  },
+  "review_tok_raw": {
+    "mean": 23.9622,
+    "median": 16.0,
+    "stdev": 24.6999
+  },
+  "review_tok_clean": {
+    "mean": 23.1865,
+    "median": 16.0,
+    "stdev": 23.8314
+  },
+  "review_pct_shorter": 6.953726291993642,
+  "review_empty": 67
+}

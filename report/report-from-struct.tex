@@ -1,0 +1,547 @@
+% Arabic Sentiment Analysis — Report structure (from docs/repport-struct.md)
+% Compile: pdflatex report-from-struct.tex (twice for TOC). For Arabic examples in the PDF body, use XeLaTeX + fontspec + an Arabic font.
+
+\documentclass[11pt,a4paper]{report}
+
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+\usepackage{setspace}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstdefinestyle{py}{
+  language=Python,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  stringstyle=\color{teal},
+  breaklines=true,
+  showstringspaces=false,
+  columns=fullflexible,
+}
+\usepackage{fancyvrb}
+
+\title{Sentiment Analysis in Arabic:\\Comparative Study of ML and DL Approaches}
+\author{Your Name(s)\\\small Module name --- Faculty / Department\\\small Supervised by: Professor Name}
+\date{Academic Year 2025--2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{center}
+\textbf{University Name}\\[0.5em]
+Faculty / Department\\
+\end{center}
+
+\thispagestyle{empty}
+\vfill
+\begin{center}
+\textit{Replace placeholders above with your institution details.}
+\end{center}
+\newpage
+
+\tableofcontents
+\clearpage
+
+% --- 1 ---
+\chapter{Introduction}
+
+\section{Goal}
+Explain what sentiment analysis is, why Arabic sentiment analysis is challenging, and what this project studies.
+
+\subsection*{Motivation (example points)}
+\begin{itemize}[noitemsep]
+    \item Growth of Arabic social media content.
+    \item Importance of NLP for Arabic.
+    \item Challenges specific to Arabic: dialects, morphology, informal writing.
+\end{itemize}
+
+\section{Objectives}
+State your objectives explicitly. Example:
+
+\textit{This project aims to compare several machine learning and deep learning approaches for Arabic sentiment classification using different text representations and feature selection techniques.}
+
+% --- 2 ---
+\chapter{Related Work}
+Brief survey (recommended; keep to 1--2 pages):
+\begin{itemize}[noitemsep]
+    \item Prior Arabic sentiment analysis research.
+    \item Common techniques (e.g., TF-IDF + SVM).
+    \item Role of pretrained models such as AraBERT.
+\end{itemize}
+Add citations (AraBERT papers, TF-IDF + SVM studies, etc.).
+
+% --- 3 ---
+\chapter{Dataset Description}
+
+This project uses two complementary Arabic corpora stored under \texttt{data/}: a microblog-style tweet collection (\texttt{Tweets.txt}) and a large tabular file of hotel guest reviews (\texttt{balanced-reviews.txt}). Together they cover \emph{short, noisy social text} versus \emph{longer, structured review text}, which is useful when comparing machine learning and deep learning models and when discussing domain shift.
+
+\begin{spacing}{1.1}
+
+\section{Arabic tweets corpus (\texttt{data/Tweets.txt})}
+
+\subsection{Origin and format}
+The file \texttt{Tweets.txt} contains one record per line in the form \texttt{text\textbackslash tLABEL}. The tweet appears first; the sentiment or stance label is separated by a tab and appears at the end of the line. All parsing and statistics below assume UTF-8 encoding. Blank lines are omitted; after cleaning empty rows, the corpus contains \textbf{10\,006} labeled tweets.
+
+\subsection{Labels and interpretation}
+The scheme uses \textbf{four} labels (uppercase in file):
+\begin{itemize}[noitemsep]
+    \item \textbf{POS} --- subjective positive sentiment (praise, congratulations, admiration).
+    \item \textbf{NEG} --- subjective negative sentiment (criticism, rejection, complaint).
+    \item \textbf{NEUTRAL} --- factual or mixed tone without a clear positive/negative stance toward a single target.
+    \item \textbf{OBJ} --- objective or informational content (news-style headlines, event announcements, invitations), often without evaluative opinion.
+\end{itemize}
+This is characteristic of Arabic Twitter datasets where ``objective'' and ``neutral'' are kept distinct: many posts are purely informational (\textbf{OBJ}), which differs from binary positive/negative movie or product reviews.
+
+\subsection{Class distribution and implications}
+The empirical distribution over the 10\,006 tweets is:
+\begin{center}
+\begin{tabular}{@{}lrr@{}}
+    \toprule
+    \textbf{Label} & \textbf{Count} & \textbf{Share (\%)} \\
+    \midrule
+    OBJ     & 6\,691 & $\approx$66.9 \\
+    NEG     & 1\,684 & $\approx$16.8 \\
+    NEUTRAL &   832 & $\approx$8.3 \\
+    POS     &   799 & $\approx$8.0 \\
+    \midrule
+    \textbf{Total} & 10\,006 & 100 \\
+    \bottomrule
+\end{tabular}
+\end{center}
+The corpus is \textbf{strongly imbalanced}: objective tweets dominate. Any model trained without adjustment may achieve high accuracy by predicting OBJ most of the time. For fair comparison, macro-averaged F1, per-class recall, or class-weighted training should be reported. The text itself is typical of Twitter: hashtags, mentions, code-switching, dialectal Egyptian and Levantine forms, elongation, and occasional non-Arabic tokens appear---so preprocessing (normalization, handling hashtags) materially affects results.
+
+\subsection{Typical content (qualitative)}
+Posts range from short reactions and political commentary to event invitations and news snippets. In the current file, tweet bodies average about \textbf{83} characters (maximum about 178 before the tab label). This dataset stresses \emph{noise robustness} and \emph{multi-class} learning rather than long-form argumentation.
+
+\section{Balanced hotel reviews (\texttt{data/balanced-reviews.txt})}
+
+\subsection{Origin and format}
+The file \texttt{balanced-reviews.txt} is \textbf{UTF-16 LE} (Unicode BOM \texttt{FF FE}); it must be read with the correct encoding when loading in Python or other tools. Each logical row is tab-separated with seven fields:
+\begin{enumerate}[noitemsep]
+    \item Row index (\texttt{no}),
+    \item Hotel name (Arabic),
+    \item Numerical \textbf{rating} on a 1--5 star scale,
+    \item Guest type (e.g.\ solo, couple, family),
+    \item Room type or ``\texttt{-}'',
+    \item Stay duration phrase (e.g.\ ``one night''),
+    \item Free-text \textbf{review} in Arabic (possibly with quotes and punctuation).
+\end{enumerate}
+Using a robust CSV/TSV reader, \textbf{105\,698} complete review rows are obtained (header excluded). The reviews refer to \textbf{1\,173} distinct hotel names, i.e.\ a multi-property hospitality domain comparable in spirit to review datasets used in Arabic sentiment benchmarks (e.g.\ HARD-style accommodation feedback).
+
+\subsection{Star ratings}
+The star column is intended as a coarse sentiment proxy. In this file, only ratings \textbf{1}, \textbf{2}, \textbf{4}, and \textbf{5} occur; there is \textbf{no} rating~3 in the extracted rows (likely removed during balancing or filtering). Counts are:
+\begin{center}
+\begin{tabular}{@{}lrr@{}}
+    \toprule
+    \textbf{Rating} & \textbf{Count} & \textbf{Share (\%)} \\
+    \midrule
+    1 (worst)  & 14\,382 & $\approx$13.6 \\
+    2          & 38\,467 & $\approx$36.4 \\
+    4          & 26\,450 & $\approx$25.0 \\
+    5 (best)   & 26\,399 & $\approx$25.0 \\
+    \midrule
+    \textbf{Total} & 105\,698 & 100 \\
+    \bottomrule
+\end{tabular}
+\end{center}
+For binary sentiment experiments, a common mapping is: ratings 4--5 $\rightarrow$ positive, 1--2 $\rightarrow$ negative (rating~3 would be neutral if present). The intermediate rating~2 is frequent, so the corpus contains many \emph{weakly negative} or mixed judgments expressed in full sentences.
+
+\subsection{Linguistic characteristics}
+Reviews are substantially \textbf{longer} than tweets: the review field averages about \textbf{137} characters per row in this file, with a long tail (maximum about 3\,365 characters for a single review). Language is often Modern Standard Arabic mixed with Gulf or Levantine usage; guests describe cleanliness, staff, location, breakfast, and value. Compared to \texttt{Tweets.txt}, vocabulary is more repetitive (hotel-specific collocations) but spelling is usually more standard and less hashtag-driven.
+
+\section{Summary comparison}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Overview of the two corpora (counts from the project files as analysed)}
+    \begin{tabular}{@{}p{3.2cm}p{4.5cm}p{5.8cm}@{}}
+        \toprule
+        \textbf{Aspect} & \textbf{\texttt{Tweets.txt}} & \textbf{\texttt{balanced-reviews.txt}} \\
+        \midrule
+        Size & 10\,006 tweets & 105\,698 reviews \\
+        Labels & 4-class: POS, NEG, NEUTRAL, OBJ & 1--5 stars (1,2,4,5 present) \\
+        Encoding & UTF-8 & UTF-16 LE \\
+        Domain & Social media, political/cultural mix & Hotel stays (multi-hotel) \\
+        Length & Short & Longer paragraphs \\
+        Balance & Highly skewed toward OBJ & Rating frequencies deliberately structured \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\noindent
+These differences motivate separate preprocessing choices (e.g.\ hashtag handling for tweets, sentence segmentation for reviews) and careful interpretation of metrics when aggregating or comparing results across corpora.
+
+\end{spacing}
+
+% --- 4 ---
+\chapter{Data Preprocessing}
+
+Two corpora are cleaned with \textbf{different pipelines} implemented in \texttt{src/preprocessing.py}: \texttt{preprocess\_tweet} for microblog text (\texttt{data/Tweets.txt}) and \texttt{preprocess\_balanced\_review} for hotel feedback (\texttt{data/balanced-reviews.txt}). Quantitative comparisons below were produced by \texttt{scripts/analyze\_preprocessing.py} on the full files (statistics saved as \texttt{report/preprocessing\_stats.json}).
+
+\section{Pipeline for tweets (\texttt{preprocess\_tweet})}
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Social tokens:} remove URLs; drop \texttt{@}mentions; replace hashtags \texttt{\#word} by \texttt{word} so topical Arabic is retained; collapse long underscore/dash runs typical of noisy posts.
+    \item \textbf{Script filter:} remove Arabic diacritics not needed for polarity; keep Arabic letters and spaces; squeeze whitespace.
+    \item \textbf{Surface normalisation:} optional emoji$\rightarrow$sentiment placeholders; strip Latin punctuation; unify alif/yaa/\textit{taa marbuta} variants (e.g.\ \textit{alef} and \textit{haa} forms).
+    \item \textbf{Deep clean:} repeated-character shortening (e.g.\ elongation), tatweel removal, non-Arabic symbol stripping while keeping underscore inside tokens when useful.
+\end{enumerate}
+
+Stemming is \textbf{optional} (\texttt{use\_stemming=True}); CSV export in \texttt{src/load\_to\_csv.py} enables it for archived tweet files.
+
+\subsection{Usage (code)}
+Listing~\ref{lst:prep-import} shows how the cleaners and binary star mapping are imported and called from application code or notebooks.
+
+\begin{lstlisting}[style=py, caption={Import and single-document cleaning.}, label={lst:prep-import}]
+from src.preprocessing import (
+    preprocess_tweet,
+    preprocess_balanced_review,
+    preprocess_tweets,
+    preprocess_balanced_reviews,
+    star_rating_to_binary,
+)
+
+text_t = preprocess_tweet(raw_tweet_string)
+text_r = preprocess_balanced_review(raw_review_string)
+
+y_bin = star_rating_to_binary(row_rating)  # "POS", "NEG", or None
+\end{lstlisting}
+
+\begin{lstlisting}[style=py, caption={Batch cleaning before vectorisation.}, label={lst:prep-batch}]
+X_tweets_clean = preprocess_tweets(list_of_raw_tweets)
+X_reviews_clean = preprocess_balanced_reviews(list_of_raw_review_cells)
+\end{lstlisting}
+
+\section{Pipeline for hotel reviews (\texttt{preprocess\_balanced\_review})}
+
+\begin{enumerate}[noitemsep]
+    \item \textbf{Decorative quotes:} remove smart/ASCII quotes often pasted around review titles in scraped tables.
+    \item Same \textbf{script filter}, \textbf{emoji/punctuation/normalisation}, and \textbf{deep clean} as generic Arabic text (hashtag logic is disabled---reviews rarely use Twitter-style \texttt{\#}).
+\end{enumerate}
+
+\section{Binary labels for star ratings}
+
+For experiments that need \textbf{two classes} on \texttt{balanced-reviews.txt}, numeric ratings are mapped with \texttt{star\_rating\_to\_binary}: ratings 4--5 $\rightarrow$ \texttt{POS}, 1--2 $\rightarrow$ \texttt{NEG}; rating~3 can be dropped or folded (parameter \texttt{neutral}). The current extract contains only stars $\{1,2,4,5\}$.
+
+\begin{lstlisting}[style=py, caption={Binary mapping for the rating column (strings or ints).}, label={lst:prep-binary}]
+label = star_rating_to_binary("5")   # -> "POS"
+label = star_rating_to_binary(1)    # -> "NEG"
+label = star_rating_to_binary(3)      # -> None if neutral="drop" (default)
+\end{lstlisting}
+
+\section{Illustrative text transformations}
+
+Real lines were taken from \texttt{data/Tweets.txt} and \texttt{data/balanced-reviews.txt} and processed with the project pipelines (see \texttt{scripts/sample\_preprocessing\_examples.py}). Table~\ref{tab:text-transform} summarises the \emph{linguistic} effect; the exact UTF-8 strings are reproduced below.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Qualitative summary of two sample transformations.}
+    \label{tab:text-transform}
+    \begin{tabular}{@{}p{2.2cm}p{11cm}@{}}
+        \toprule
+        \textbf{Corpus} & \textbf{What changes} \\
+        \midrule
+        Tweet &
+        Hashtag markers (\texttt{\#}) are removed while keeping the following Arabic letters as ordinary tokens; URLs and \texttt{@}mentions are removed; common orthographic rules merge alef variants and map \textit{ta marbuta} to \textit{haa} where configured. \\
+        \midrule
+        Review &
+        Decorative quotes and stray punctuation copied from booking tables are stripped before the same Arabic normalisation pass used for tweets (reviews do not use Twitter hashtag rules). \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\noindent\textit{Note:} Run \LaTeX{} from the \texttt{report/} folder so \verb|preprocessing_examples.utf8.txt| is found. If Arabic glyphs show as blanks, use \textbf{XeLaTeX}/\textbf{LuaLaTeX} with an Arabic font, or read \texttt{preprocessing\_examples.utf8.txt} directly.
+
+\vspace{0.5em}
+\small
+\VerbatimInput{preprocessing_examples.utf8.txt}
+\normalsize
+
+\section{Empirical effect of cleaning (full-corpus statistics)}
+
+Cleaning shortens texts slightly by removing URLs, punctuation, and decorative symbols while preserving lexical content. Table~\ref{tab:preprocess-stats} summarises length and token counts \emph{before} (raw) and \emph{after} (cleaned) preprocessing.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Raw vs.\ cleaned statistics (character length and whitespace-separated token counts).}
+    \label{tab:preprocess-stats}
+    \begin{tabular}{@{}lrrrr@{}}
+        \toprule
+        & \multicolumn{2}{c}{\textbf{Characters}} & \multicolumn{2}{c}{\textbf{Tokens}} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+        \textbf{Corpus ($n$)} & \textbf{Mean} & \textbf{Median} & \textbf{Mean} & \textbf{Median} \\
+        \midrule
+        Tweets raw (10\,006) & 83.6 & 86 & 14.2 & 14 \\
+        Tweets cleaned & 78.9 & 80 & 14.2 & 14 \\
+        \midrule
+        Reviews raw (105\,698) & 137.1 & 96 & 24.0 & 16 \\
+        Reviews cleaned & 130.0 & 91 & 23.2 & 16 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\noindent
+\textbf{Relative shortening:} mean character length drops by about \textbf{6.4\,\%} for tweets and \textbf{7.0\,\%} for reviews (URLs, punctuation, and quote stripping). Token counts change modestly ($\approx$0.3 tokens fewer per tweet and $\approx$0.8 per review on average), showing that the pipelines mainly \textit{normalise surface form} rather than aggressively truncate content.
+
+\section{Discussion: differences between corpora after cleaning}
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Length:} cleaned reviews remain longer on average than tweets ($\approx$130 vs.\ $\approx$79 characters mean), consistent with paragraph-style hotel feedback versus short posts.
+    \item \textbf{Variance:} reviews show higher standard deviation in length (long outliers exist); tweets are more tightly clustered around a short length band.
+    \item \textbf{Empty strings:} a handful of rows become empty after cleaning (5 tweets, 67 reviews in the measured run), mostly noise-only lines; these rows should be dropped before training.
+    \item \textbf{Design implication:} hashtag-preserving cleaning suits opinion and topic cues in Twitter data; quote stripping suits tabular review exports. Using one generic cleaner for both domains would either lose hashtag semantics or skip hotel-specific noise removal.
+\end{itemize}
+
+\section{Optional stemming}
+
+If enabled, a light Arabic stemmer (package \texttt{light\_stemmer} when installed, else a rule-based fallback) reduces morphological variants to a common surface form; enable only when evaluating sparse bag-of-words models, since stemming can hurt neural models that rely on full word shapes.
+
+% --- 5 ---
+\chapter{Text Representation}
+
+Machine learning and many deep models cannot consume raw strings: each document must be mapped to a fixed-length numerical representation (sparse counts, dense vectors, or contextual embeddings). This chapter summarises the representations used in Arabic sentiment analysis and relates them to the implementations in \texttt{src/Feature\_Extraction.py} and \texttt{src/embeddings.py}.
+
+\section{Problem setting}
+
+Let $\mathcal{D} = \{d_1,\ldots,d_N\}$ be a corpus of preprocessed Arabic texts. A vocabulary $\mathcal{V}$ of terms (words or \textit{n}-grams) is built from training data. Each document $d$ is mapped to a vector $\mathbf{x}(d) \in \mathbb{R}^{|\mathcal{V}|}$ (sparse) or $\mathbb{R}^{k}$ with $k \ll |\mathcal{V}|$ (dense), or to a sequence of token IDs for neural encoders.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Overview of representation families (typical use in this project).}
+    \label{tab:repr-overview}
+    \small
+    \begin{tabular}{@{}p{2.6cm}p{4.2cm}p{5.8cm}@{}}
+        \toprule
+        \textbf{Family} & \textbf{Output shape / type} & \textbf{Role in the pipeline} \\
+        \midrule
+        BoW / TF-IDF & Sparse matrix ($N \times |\mathcal{V}|$) & Classical ML (NB, SVM, LR) with fast linear algebra \\
+        FastText / AraVec & Dense word vectors averaged per doc & Bridging sparse lexicons and semantics \\
+        AraBERT & Contextual vectors per token / \texttt{[CLS]} & Strong baseline for Arabic NLP \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{Bag of Words (BoW)}
+
+\subsection{Principle}
+The \textbf{bag-of-words} model ignores word order: each document is represented only by how often terms from $\mathcal{V}$ appear. After fixing an ordering of vocabulary terms $t_1,\ldots,t_{|\mathcal{V}|}$, document $d_i$ maps to
+\[
+    \mathbf{x}_i = [c_{i,1},\, c_{i,2},\, \ldots,\, c_{i,|\mathcal{V}|}]^{\top},
+\]
+where $c_{i,j}$ is the raw count (or binary presence) of term $t_j$ in $d_i$. In matrix form, the whole corpus is a document--term matrix $\mathbf{X} \in \mathbb{R}^{N \times |\mathcal{V}|}$, usually very sparse.
+
+\subsection{\textit{n}-grams and vocabulary control}
+Unigrams capture single tokens; bigrams and higher-order \textit{n}-grams retain short local context (\textit{e.g.}\ ``not good'' vs.\ ``good'') at the cost of a larger $|\mathcal{V}|$. In this codebase, \texttt{CountVectorizer} supports \texttt{ngram\_range=(1,2)} (unigrams + bigrams), \texttt{max\_features} to cap $|\mathcal{V}|$, and \texttt{min\_df} / \texttt{max\_df} to drop overly rare or overly frequent terms. For Arabic, \texttt{lowercase=False} is appropriate because case folding is irrelevant and can harm Latin fragments.
+
+\subsection{Strengths and limits}
+BoW is fast and interpretable, and pairs well with linear models. It cannot capture long-range dependencies or polysemy: the same surface form has a single dimension regardless of context. Morphological richness in Arabic inflates vocabulary size unless stemming/normalisation is applied.
+
+\section{Term Frequency--Inverse Document Frequency (TF-IDF)}
+
+\subsection{Motivation}
+Raw counts emphasise long documents and frequent function words. \textbf{TF-IDF} reweights terms so that words discriminative for a few documents receive higher weight than words that appear everywhere.
+
+\subsection{Components}
+Let $f_{t,d}$ be the raw frequency of term $t$ in document $d$, and $\mathrm{df}(t)$ the number of documents in which $t$ appears. A standard weight is
+\begin{equation}
+    \mathrm{TF\text{-}IDF}(t,d) = w^{\mathrm{TF}}(t,d)\;\times\;w^{\mathrm{IDF}}(t),
+    \label{eq:tfidf-product}
+\end{equation}
+with inverse document frequency often written as
+\begin{equation}
+    w^{\mathrm{IDF}}(t) = \log\frac{1 + N}{1 + \mathrm{df}(t)} + 1
+    \label{eq:idf-smooth}
+\end{equation}
+(smoothed IDF as in scikit-learn), where $N$ is the corpus size. Term frequency $w^{\mathrm{TF}}$ may be raw counts, normalised counts, or---as in this project---\textbf{sublinear TF}: $w^{\mathrm{TF}} = 1 + \log f_{t,d}$ when $f_{t,d}>0$, which dampens the influence of very frequent repetitions within one document (\texttt{sublinear\_tf=True} in \texttt{TfidfVectorizer}).
+
+\subsection{Normalisation}
+The implementation applies \textbf{L2 normalisation} per row (\texttt{norm="l2"}), so each document vector lies on a hypersphere and cosine similarity equals the dot product---a common choice for text similarity and linear SVMs.
+
+\subsection{Relation to BoW}
+TF-IDF uses the same sparse indexing as BoW but replaces counts by TF-IDF weights. Feature selection (Chi-square, mutual information, etc.) can be applied on top of either representation.
+
+\section{Distributed representations: FastText and AraVec}
+
+\subsection{Word embeddings}
+\textbf{FastText} (and comparable tools such as \textbf{AraVec}) learn dense vectors $\mathbf{e}_t \in \mathbb{R}^{k}$ for words (and subword units) from large unlabeled corpora using predictive objectives (skip-gram / CBOW). Semantically related words tend to have nearby vectors.
+
+\subsection{Subwords and Arabic}
+FastText represents each word as a sum of its character \textit{n}-grams. That helps \textbf{rare words}, \textbf{typos}, and morphological variants common in dialectal or noisy Arabic: the model can partially share evidence across forms that share character sequences.
+
+\subsection{Document vectors}
+For classification, a simple recipe is to average word vectors of tokens in the document (possibly weighted by TF-IDF). This yields a dense $\mathbf{x}_i \in \mathbb{R}^{k}$ suitable for logistic regression or SVM with linear kernel. Quality depends on whether the embedding vocabulary covers the domain (hotel reviews vs.\ tweets).
+
+\section{Contextual representations: AraBERT}
+
+\subsection{From words to transformers}
+Unlike static embeddings, \textbf{AraBERT} (BERT architecture trained on Arabic text) builds \textbf{contextual} vectors: the representation of a token depends on the full sentence. A classification head often uses the pooled representation of the special \texttt{[CLS]} token or a mean pool over subword pieces produced by the WordPiece tokenizer.
+
+\subsection{Fine-tuning}
+Starting from pretrained weights, \textbf{fine-tuning} updates all (or top) layers on the downstream sentiment dataset with a task-specific softmax layer. This typically yields the best accuracy among the representations discussed here, at higher computational cost (GPU recommended).
+
+\subsection{Arabic-specific benefit}
+General multilingual models underperform compared to Arabic-centric pretraining when dialect, morphology, and spelling variation matter; AraBERT is designed for Modern Standard Arabic and much user-generated Arabic text used in benchmarks.
+
+\section{Choosing a representation for this project}
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Baseline experiments:} TF-IDF + linear SVM / logistic regression is a strong, reproducible baseline (see \texttt{tfidf()} defaults: \texttt{ngram\_range}, \texttt{max\_features}, \texttt{min\_df}, \texttt{max\_df}).
+    \item \textbf{Feature selection studies:} Chi-square / MI / Fisher scores apply naturally on sparse BoW or TF-IDF matrices with varying \texttt{max\_features}.
+    \item \textbf{Semantic gap:} FastText/AraVec averages help when exact word overlap between train and test is low.
+    \item \textbf{Best accuracy budget:} Fine-tuned AraBERT is the usual ceiling model for Arabic sentiment, traded off against training time and inference cost.
+\end{itemize}
+
+% --- 6 ---
+\chapter{Feature Selection}
+Explain why reducing dimensionality can improve speed and sometimes generalization.
+
+\section{Chi-Square}
+\[
+    \chi^2 = \sum \frac{(O - E)^2}{E}.
+\]
+
+\section{Mutual Information}
+
+\section{Fisher Score}
+
+\section{Feature sizes tested}
+Report experiments at sizes such as: 20, 40, 100, 200, 400, 600, 1000, 1500 features.
+
+% --- 7 ---
+\chapter{Models}
+
+\section{Machine Learning Models}
+\subsection{Naive Bayes}
+Probabilistic classifier based on Bayes rule with conditional independence assumptions.
+
+\subsection{Support Vector Machine (SVM)}
+Maximum-margin separation via a hyperplane (often with kernel or linear kernel on sparse features).
+
+\subsection{Logistic Regression}
+Linear model for classification via sigmoid / softmax over weighted features.
+
+\section{Deep Learning Models}
+\subsection{LSTM}
+Captures sequential dependencies in token sequences.
+
+\subsection{Convolutional Neural Network (CNN)}
+Local n-gram patterns aggregated via convolution and pooling.
+
+\subsection{AraBERT}
+Fine-tuning pretrained transformer weights on your labeled data.
+
+% --- 8 ---
+\chapter{Experimental Setup}
+\begin{itemize}[noitemsep]
+    \item Train/test split (e.g.\ 80\% / 20\%) or cross-validation.
+    \item Libraries (scikit-learn, TensorFlow/Keras, transformers, etc.).
+    \item Hardware (optional): CPU/GPU, RAM.
+    \item Hyperparameters: vectorizer sizes, learning rates, epochs, batch size.
+\end{itemize}
+
+% --- 9 ---
+\chapter{Evaluation Metrics}
+
+\section{Accuracy}
+\[
+    \mathrm{Accuracy} = \frac{\mathrm{TP} + \mathrm{TN}}{\mathrm{TP} + \mathrm{TN} + \mathrm{FP} + \mathrm{FN}}.
+\]
+
+\section{Precision}
+\[
+    \mathrm{Precision} = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FP}}.
+\]
+
+\section{Recall}
+\[
+    \mathrm{Recall} = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FN}}.
+\]
+
+\section{F1-score}
+\[
+    F_1 = 2 \times \frac{\mathrm{Precision} \times \mathrm{Recall}}{\mathrm{Precision} + \mathrm{Recall}}.
+\]
+
+\section{ROC / AUC}
+
+\section{Confusion Matrix}
+
+% --- 10 ---
+\chapter{Results and Discussion}
+\textit{This is the core chapter.} Include tables comparing models and representations.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Example results (replace with your experiments)}
+    \begin{tabular}{@{}llcc@{}}
+        \toprule
+        \textbf{Model} & \textbf{Representation} & \textbf{Accuracy} & \textbf{F1} \\
+        \midrule
+        SVM      & TF-IDF      & 91\% & 0.90 \\
+        NB       & BoW         & 84\% & 0.82 \\
+        AraBERT  & Transformer & 95\% & 0.94 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Discuss:
+\begin{itemize}[noitemsep]
+    \item Which model performs best and why.
+    \item HARD vs.\ ASTD differences.
+    \item Impact of feature selection.
+    \item Why stronger representations (e.g.\ AraBERT) may outperform sparse features.
+\end{itemize}
+
+Include figures: accuracy comparison, training time, effect of feature size.
+
+% --- 11 ---
+\chapter{Challenges}
+Important for Arabic NLP:
+\begin{itemize}[noitemsep]
+    \item Dialects and code-switching.
+    \item Slang and informal spelling.
+    \item Ambiguity and negation.
+    \item Noisy tweets vs.\ formal reviews.
+    \item Preprocessing trade-offs.
+\end{itemize}
+
+% --- 12 ---
+\chapter{Conclusion}
+Summarize best methods, main findings, and lessons learned.
+
+% --- 13 ---
+\chapter{Possible Improvements and Future Work}
+Examples:
+\begin{itemize}[noitemsep]
+    \item Larger or more diverse datasets.
+    \item Multilingual or dialect-aware models.
+    \item Dialect-specific preprocessing.
+    \item Ensemble methods.
+    \item Emotion detection beyond polarity.
+\end{itemize}
+
+% --- 14 ---
+\begin{thebibliography}{99}
+\bibitem{placeholder}
+Add references: papers, dataset documentation, AraBERT, scikit-learn, etc.
+\end{thebibliography}
+
+\appendix
+\chapter{Professional Report Checklist}
+\begin{itemize}[noitemsep]
+    \item Tables, confusion matrices, charts.
+    \item Pipeline or architecture diagrams.
+    \item Clear comparison and honest discussion of limitations.
+\end{itemize}
+
+\vspace{1em}
+\noindent\textit{Structure derived from \texttt{docs/repport-struct.md}. Fill all bracketed and placeholder sections before submission.}
+
+\end{document}

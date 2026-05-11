@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import List, Tuple
 
 try:
-    from src.preprocessing import clean_text
+    from src.preprocessing import preprocess_tweet
 except ModuleNotFoundError:
-    from preprocessing import clean_text
+    from preprocessing import preprocess_tweet
 
 
 VALID_LABELS = {"POS", "NEG", "OBJ", "NEUTRAL"}
@@ -60,7 +60,7 @@ def write_clean_csv(texts: List[str], labels: List[str], out_path: Path) -> None
         writer = csv.writer(fp)
         writer.writerow(["clean_text", "label"])
         for text, label in zip(texts, labels):
-            writer.writerow([clean_text(text, use_stemming=True), label])
+            writer.writerow([preprocess_tweet(text, use_stemming=True), label])
 
 
 def main() -> None:

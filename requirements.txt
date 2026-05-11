@@ -1,0 +1,11 @@
+# Core numeric / ML
+numpy
+scikit-learn
+
+# Deep learning (LSTM/CNN in src/nn_sequence_models.py; AraBERT in src/embeddings.py)
+torch
+
+# Optional / other src modules
+matplotlib
+gensim
+transformers

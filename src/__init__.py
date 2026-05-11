@@ -10,9 +10,11 @@ from .Feature_Selection import (
     select_features,
 )
 from .models import (
+    SequenceModelBundle,
     fit_linear_svc,
     fit_logistic_regression,
     fit_multinomial_nb,
+    fit_sequence_classifier,
     predict,
     predict_labels,
     train_classifier,
@@ -26,7 +28,9 @@ __all__ = [
     "bow_vectorizer",
     "build_classification_report",
     "evaluate_predictions",
+    "SequenceModelBundle",
     "fit_linear_svc",
+    "fit_sequence_classifier",
     "fit_logistic_regression",
     "fit_multinomial_nb",
     "predict",

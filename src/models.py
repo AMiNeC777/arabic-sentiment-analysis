@@ -62,3 +62,7 @@ def predict_labels(model: Any, X: Any):
 
 # Backwards-compatible alias
 predict = predict_labels
+
+
+# PyTorch LSTM / CNN on whitespace-tokenized text (see ``nn_sequence_models``).
+from .nn_sequence_models import SequenceModelBundle, fit_sequence_classifier

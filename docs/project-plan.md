@@ -68,13 +68,13 @@ Arabic preprocessing is critical.
 You will transform text into numbers.
 
 1. Bag of Words (BoW)
-   - Count word occurrences
+  - Count word occurrences
 2. TF-IDF
-   - Weight important words more
+  - Weight important words more
 3. FastText
-   - Word embeddings (captures meaning)
+  - Word embeddings (captures meaning)
 4. AraBERT
-   - Pretrained transformer for Arabic (state-of-the-art)
+  - Pretrained transformer for Arabic (state-of-the-art)
 
 ### 🟣 Step 4: Feature Selection
 
@@ -148,3 +148,4 @@ Summarize:
 - Best model
 - Key challenges in Arabic
 - Possible improvements
+
