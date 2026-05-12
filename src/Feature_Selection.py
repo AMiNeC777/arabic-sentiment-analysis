@@ -74,13 +74,15 @@ def select_features(
     """
     Generic selector wrapper: returns ``(X_train_selected, X_test_selected)``.
 
-    method: ``"chi2"`` | ``"mi"`` | ``"fisher"``
+    method: ``"none"`` | ``"chi2"`` | ``"mi"`` | ``"fisher"``
 
     For the fitted selector or Fisher indices, use ``Select_chi2``, ``Select_mi``, or
     ``Select_fisher`` directly (they return a third value).
     """
     method = method.lower().strip()
 
+    if method in {"none", "identity", "skip"}:
+        return X_train, X_test
     if method == "chi2":
         xtr, xte, _ = Select_chi2(X_train, y_train, X_test, k)
         return xtr, xte
@@ -91,4 +93,4 @@ def select_features(
         xtr, xte, _ = Select_fisher(X_train, y_train, X_test, k)
         return xtr, xte
 
-    raise ValueError("method must be one of: 'chi2', 'mi', 'fisher'")
+    raise ValueError("method must be one of: 'none', 'chi2', 'mi', 'fisher'")

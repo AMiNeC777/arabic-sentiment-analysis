@@ -400,78 +400,355 @@ General multilingual models underperform compared to Arabic-centric pretraining 
 
 % --- 6 ---
 \chapter{Feature Selection}
-Explain why reducing dimensionality can improve speed and sometimes generalization.
 
-\section{Chi-Square}
+High-dimensional sparse vectors from bag-of-words or TF---IDF can contain many weakly relevant dimensions. \textbf{Feature selection} keeps only the most informative dimensions (or keeps all as a baseline), which often \emph{reduces training time and memory} and can \emph{improve generalisation} when many noisy dimensions would otherwise dominate a linear decision boundary.
+
+This project implements several classical selectors in \texttt{src/Feature\_Selection.py} and compares them in a reproducible way via \texttt{src/ml\_experiments.py} and the script \texttt{scripts/compare\_feature\_selection.py}.
+
+\section{Notation}
+
+Let $\mathbf{X}_{\mathrm{train}} \in \mathbb{R}^{n \times p}$ (typically sparse) be the matrix of vectorised training documents after a fixed feature extractor (e.g.\ TF---IDF), with binary labels $\mathbf{y} \in \{0,1\}^n$. Feature selection chooses a subset of $k \ll p$ column indices so that both train and test matrices are restricted to the same columns, avoiding leakage by fitting scores \emph{only} on the training fold.
+
+\section{Methods implemented}
+
+\subsection{Baseline: no selection (\texttt{none})}
+
+\textbf{Idea:} use the full vectorised vocabulary (subject to the extractor's own \texttt{max\_features}, \texttt{min\_df}, etc.). This is the reference against which any selector must earn its keep.
+
+\textbf{Implementation:} \texttt{select\_features(..., method="none")} returns \texttt{X\_train} and \texttt{X\_test} unchanged (\texttt{Feature\_Selection.py}).
+
+\subsection{Chi-square test (\texttt{chi2})}
+
+\textbf{Idea:} score each dimension (term or \textit{n}-gram) for \textbf{statistical dependence} with the class label under a $\chi^2$ test of independence, treating non-negative feature values as categorical counts in the spirit of discrete tests. Terms whose counts co-vary strongly with positive vs.\ negative documents receive high scores.
+
+\textbf{Use case:} standard, fast filter for sparse \textbf{non-negative} text features (raw counts or TF---IDF with non-negative entries).
+
+\textbf{Implementation:} \texttt{SelectKBest} with \texttt{score\_func=chi2}, keeping the top $k$ terms (\texttt{Select\_chi2}).
+
+\subsection{Mutual information (\texttt{mi})}
+
+\textbf{Idea:} \textbf{Mutual information} (MI) measures how much knowing a feature reduces uncertainty about the label (in bits, up to a constant). It can detect non-linear associations that a linear correlation might miss.
+
+\textbf{Caveats:} MI can be slower and more memory-hungry than $\chi^2$ on very wide sparse matrices; scikit-learn may materialise dense blocks internally depending on configuration. It is still exposed as an optional filter for comparison.
+
+\textbf{Implementation:} \texttt{SelectKBest} with \texttt{score\_func=mutual\_info\_classif} (\texttt{Select\_mi}).
+
+\subsection{Fisher score ranking (\texttt{fisher})}
+
+\textbf{Idea:} for each dimension $j$, compare \textbf{between-class spread} to \textbf{within-class variance}. A common scalar score is
+\begin{equation}
+    F_j = \frac{\sum_{c} n_c\, (\mu_{j,c} - \mu_j)^2}{\sum_{c} n_c\, \sigma_{j,c}^2 + \varepsilon},
+\end{equation}
+where $\mu_{j,c}$ and $\sigma_{j,c}^2$ are the mean and variance of feature $j$ in class $c$, $\mu_j$ is the global mean of feature $j$, $n_c$ is the class count, and $\varepsilon$ avoids division by zero. Larger $F_j$ suggests better class separation along dimension $j$.
+
+\textbf{Implementation:} \texttt{Fisher\_score} computes per-dimension scores on the training matrix (dense if input was sparse); \texttt{Select\_fisher} keeps the indices of the top $k$ dimensions and slices train and test consistently.
+
+\section{Selecting the best method: cross-validation over a discrete grid}
+
+We treat the \textbf{choice of selector} as a \textbf{categorical hyperparameter} with a small grid
 \[
-    \chi^2 = \sum \frac{(O - E)^2}{E}.
+    \mathcal{M} = \{\texttt{none},\, \texttt{chi2},\, \texttt{mi},\, \texttt{fisher}\}.
 \]
+This is analogous in spirit to \textbf{grid search}: instead of optimising real-valued weights, we \textbf{search over finitely many preprocessing choices} and pick the one with the best validation score.
 
-\section{Mutual Information}
+\textbf{Important distinction:} scikit-learn's \texttt{GridSearchCV} is used elsewhere in the project for \textbf{numeric} hyperparameters (e.g.\ SVM $C$, vectoriser \texttt{max\_features}); the feature-selection comparison uses the same \textbf{evaluation protocol} (stratified $K$-fold on the training pool) but implements the loop explicitly so each fold \textbf{refits} the vectoriser, the selector, and the classifier only on training data---no test leakage.
 
-\section{Fisher Score}
+\textbf{Procedure (summary):}
+\begin{enumerate}[noitemsep]
+    \item Split the corpus into a \textbf{training pool} and a \textbf{held-out test} set (stratified).
+    \item For each method $m \in \mathcal{M}$: run \textbf{stratified $K$-fold CV} on the training pool. In each fold, vectorise train/validation, apply selection $m$ with fixed $k$, train a fixed classifier (e.g.\ linear SVM), record validation F$_1$.
+    \item Choose $\arg\max_{m}$ of the \textbf{mean CV F$_1$} (tie-break with lower variance if desired).
+    \item \textbf{Refit} the winning $m$ on the full training pool and report \textbf{hold-out} accuracy, precision, recall, and F$_1$ on the test set.
+\end{enumerate}
 
-\section{Feature sizes tested}
-Report experiments at sizes such as: 20, 40, 100, 200, 400, 600, 1000, 1500 features.
+\noindent
+The helper \texttt{cross\_val\_score\_pipeline} in \texttt{ml\_experiments.py} encodes steps 2--3; \texttt{holdout\_evaluate} supports step~4. The CLI script \texttt{scripts/compare\_feature\_selection.py} prints a sorted table and the best method automatically.
+
+\section{Code: running the comparison}
+
+Listing~\ref{lst:fs-cli} shows the command-line entry point (run from the \textbf{repository root}). Listing~\ref{lst:fs-api} shows the equivalent programmatic pattern for a minimal notebook cell.
+
+\begin{lstlisting}[style=py, caption={Shell: compare selectors with fixed TF---IDF and linear SVM (example).}, label={lst:fs-cli}]
+python scripts/compare_feature_selection.py ^
+  --dataset reviews ^
+  --max-samples 12000 ^
+  --extraction tfidf ^
+  --methods none,chi2,mi,fisher ^
+  --k-select 5000 ^
+  --cv 5 ^
+  --classifier linear_svc ^
+  --output-csv report/feature_selection_cv.csv
+\end{lstlisting}
+\textit{Note:} On Unix shells, replace \texttt{\^{}} with line continuation \texttt{\textbackslash}.
+
+\begin{lstlisting}[style=py, caption={Python: same logic inside a notebook or driver script.}, label={lst:fs-api}]
+import sys
+from pathlib import Path
+
+ROOT = Path("..").resolve()   # adjust if your cwd differs
+sys.path.insert(0, str(ROOT / "src"))
+
+from ml_experiments import (
+    init_rng,
+    load_binary_xy,
+    cross_val_score_pipeline,
+    holdout_evaluate,
+)
+from sklearn.model_selection import train_test_split
+
+SEED = 42
+init_rng(SEED)
+X, y = load_binary_xy("reviews", max_samples=12000, random_state=SEED)
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=SEED, stratify=y
+)
+
+mean_f1, std_f1 = cross_val_score_pipeline(
+    X_train, y_train,
+    extraction_method="tfidf",
+    selection_method="chi2",
+    k_select=5000,
+    classifier_name="linear_svc",
+    n_splits=5,
+    random_state=SEED,
+)
+print("chi2:", mean_f1, "+/-", std_f1)
+\end{lstlisting}
+
+\section{Results (placeholder figure)}
+
+Export a screenshot of the terminal or notebook table produced by the comparison (sorted mean F$_1$, standard deviation, and optional error column for failed runs). Save the image as \texttt{gs1.png} in the same directory as this \texttt{.tex} file (\texttt{report/gs1.png}) before compiling.
+
+\begin{figure}[htbp]
+    \centering
+    \IfFileExists{gs1.png}{%
+        \includegraphics[width=0.92\textwidth]{gs1.png}%
+    }{%
+        \fbox{\parbox[c][4.6cm][c]{0.92\textwidth}{\centering\textit{(Placeholder --- no file \texttt{gs1.png} yet)}\\[0.6em]%
+        Export a screenshot of \texttt{compare\_feature\_selection.py} output and save it as \texttt{report/gs1.png}, then recompile.}}%
+    }
+    \caption{Feature selection comparison: cross-validated F$_1$ across methods (\texttt{none}, \texttt{chi2}, \texttt{mi}, \texttt{fisher}) with fixed extraction and classifier. Replace the placeholder by adding \texttt{gs1.png} next to this \texttt{.tex} file.}
+    \label{fig:feature-selection-gs1}
+\end{figure}
+
+\section{Choosing $k$ (number of retained features)}
+
+The hyperparameter $k$ in \texttt{SelectKBest} / Fisher truncation should be chosen on \textbf{validation} data or inner CV. If $k$ exceeds the number of columns produced by the vectoriser on a training fold, scikit-learn returns all available features and may emit a warning---reduce $k$ or increase \texttt{max\_features} in the extractor. Reporting a \textbf{curve} of F$_1$ vs.\ $k$ (e.g.\ $k \in \{500, 1000, 2000, 5000\}$) is a useful extension beyond the single-$k$ comparison table.
 
 % --- 7 ---
 \chapter{Models}
 
-\section{Machine Learning Models}
-\subsection{Naive Bayes}
-Probabilistic classifier based on Bayes rule with conditional independence assumptions.
+This chapter summarises the models used or considered in the project. The goal is not only to obtain a high score, but also to compare how classical sparse-feature classifiers and sequence-based deep models behave on Arabic tweets and hotel reviews.
 
-\subsection{Support Vector Machine (SVM)}
-Maximum-margin separation via a hyperplane (often with kernel or linear kernel on sparse features).
+\section{Machine Learning Models}
+
+Classical machine learning models are trained on fixed-size vectors such as BoW or TF---IDF. In Arabic sentiment analysis, they are strong baselines because sentiment often depends on discriminative words and short phrases.
+
+\subsection{Multinomial Naive Bayes}
+
+\textbf{Definition.} Naive Bayes is a probabilistic classifier based on Bayes' rule and the assumption that features are conditionally independent given the class. For a document represented by features $\mathbf{x} = (x_1,\ldots,x_p)$, the predicted class is
+\begin{equation}
+    \hat{y}
+    =
+    \arg\max_{c}
+    P(c)\prod_{j=1}^{p} P(x_j \mid c).
+\end{equation}
+In practice, logarithms are used:
+\begin{equation}
+    \hat{y}
+    =
+    \arg\max_{c}
+    \left[
+    \log P(c) + \sum_{j=1}^{p} x_j \log P(t_j \mid c)
+    \right].
+\end{equation}
+
+\textbf{Suitability for this project.} Multinomial Naive Bayes is usually good as a fast baseline for BoW/TF---IDF text classification. It can perform well on short Arabic tweets when class-specific words are clear, but it may underperform linear SVM or logistic regression because the independence assumption is too simple for negation, dialectal expressions, and longer review sentences.
+
+\subsection{Support Vector Machine (Linear SVM)}
+
+\textbf{Definition.} A Support Vector Machine finds a separating hyperplane with the largest margin between classes. With a linear classifier, the prediction is
+\begin{equation}
+    \hat{y} = \mathrm{sign}(\mathbf{w}^{\top}\mathbf{x} + b).
+\end{equation}
+The soft-margin objective is commonly written as
+\begin{equation}
+    \min_{\mathbf{w},b,\xi}
+    \frac{1}{2}\|\mathbf{w}\|^2
+    + C\sum_{i=1}^{n}\xi_i,
+    \quad
+    y_i(\mathbf{w}^{\top}\mathbf{x}_i+b) \geq 1-\xi_i,
+    \quad
+    \xi_i \geq 0.
+\end{equation}
+The parameter $C$ controls the trade-off between a wide margin and training errors.
+
+\textbf{Suitability for this project.} Linear SVM is usually one of the strongest classical models for Arabic sentiment with TF---IDF, especially in high-dimensional sparse spaces. It is well suited to the project because it handles many features efficiently and often gives robust performance on both tweets and reviews.
 
 \subsection{Logistic Regression}
-Linear model for classification via sigmoid / softmax over weighted features.
+
+\textbf{Definition.} Logistic regression is a linear classifier that estimates the probability of the positive class. For binary sentiment classification,
+\begin{equation}
+    P(y=1 \mid \mathbf{x})
+    =
+    \sigma(\mathbf{w}^{\top}\mathbf{x}+b)
+    =
+    \frac{1}{1+\exp[-(\mathbf{w}^{\top}\mathbf{x}+b)]}.
+\end{equation}
+The predicted class is positive when this probability exceeds a threshold, usually $0.5$.
+
+\textbf{Suitability for this project.} Logistic regression is a strong and interpretable baseline. It is usually competitive with linear SVM on TF---IDF features, and its learned weights can be inspected to identify which Arabic tokens or \textit{n}-grams push predictions toward positive or negative sentiment.
 
 \section{Deep Learning Models}
-\subsection{LSTM}
-Captures sequential dependencies in token sequences.
+
+Deep learning models can consume token sequences and learn internal representations instead of relying only on manually fixed sparse features. They can model local word patterns, word order, and longer dependencies, but require more training time and benefit from GPU acceleration.
 
 \subsection{Convolutional Neural Network (CNN)}
-Local n-gram patterns aggregated via convolution and pooling.
+
+\textbf{Definition.} A CNN applies filters over consecutive token embeddings to detect local patterns similar to learned \textit{n}-grams. If $\mathbf{e}_i$ is the embedding of token $i$, a convolutional filter of width $h$ produces features such as
+\begin{equation}
+    z_i = f(\mathbf{W}[\mathbf{e}_i;\mathbf{e}_{i+1};\ldots;\mathbf{e}_{i+h-1}] + b),
+\end{equation}
+where $f$ is a non-linear activation. A max-pooling layer then keeps the strongest detected pattern:
+\begin{equation}
+    z_{\max} = \max_i z_i.
+\end{equation}
+
+\textbf{Suitability for this project.} CNNs are often good for sentiment analysis because sentiment clues appear in short phrases. They are suitable for Arabic tweets and reviews when enough labeled data is available, but on smaller tweet subsets a TF---IDF + SVM baseline can still be stronger and more stable.
+
+\subsection{Long Short-Term Memory (LSTM / BiLSTM)}
+
+\textbf{Definition.} LSTM is a recurrent neural network designed to remember useful sequence information through gates. A simplified LSTM update is
+\begin{align}
+    \mathbf{i}_t &= \sigma(\mathbf{W}_i[\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_i),\\
+    \mathbf{f}_t &= \sigma(\mathbf{W}_f[\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_f),\\
+    \mathbf{o}_t &= \sigma(\mathbf{W}_o[\mathbf{h}_{t-1}, \mathbf{x}_t] + \mathbf{b}_o),\\
+    \mathbf{c}_t &= \mathbf{f}_t \odot \mathbf{c}_{t-1} + \mathbf{i}_t \odot \tilde{\mathbf{c}}_t,\\
+    \mathbf{h}_t &= \mathbf{o}_t \odot \tanh(\mathbf{c}_t).
+\end{align}
+A bidirectional LSTM (BiLSTM) reads the sequence from left to right and right to left, combining both contexts.
+
+\textbf{Suitability for this project.} LSTM/BiLSTM models are useful for longer reviews where word order and negation can matter. However, they are more sensitive to dataset size, tokenisation, training epochs, and hardware. In this project they are useful as deep-learning baselines, but not guaranteed to outperform linear SVM on TF---IDF.
 
 \subsection{AraBERT}
-Fine-tuning pretrained transformer weights on your labeled data.
+
+\textbf{Definition.} AraBERT is a transformer model pretrained on Arabic text. Transformers use self-attention, where each token representation attends to other tokens in the sequence. A simplified attention operation is
+\begin{equation}
+    \mathrm{Attention}(Q,K,V)
+    =
+    \mathrm{softmax}\left(\frac{QK^{\top}}{\sqrt{d_k}}\right)V.
+\end{equation}
+For classification, the model representation (often the \texttt{[CLS]} token or pooled output) is passed to a classification layer:
+\begin{equation}
+    \hat{\mathbf{y}} = \mathrm{softmax}(\mathbf{W}\mathbf{h}_{\texttt{[CLS]}}+\mathbf{b}).
+\end{equation}
+
+\textbf{Suitability for this project.} AraBERT is usually very good for Arabic sentiment analysis because it starts from language knowledge learned from large Arabic corpora. It is expected to outperform simple sparse-feature models when fine-tuned correctly, but it requires more memory, time, and preferably a GPU. For this project, AraBERT is best treated as an advanced model or future improvement if compute resources are limited.
 
 % --- 8 ---
 \chapter{Experimental Setup}
+
+This chapter describes the practical setup used to run the experiments in the project. The same general protocol is followed for both datasets so that model comparisons are fair.
+
+\section{Datasets and label preparation}
+
+Two datasets are used:
 \begin{itemize}[noitemsep]
-    \item Train/test split (e.g.\ 80\% / 20\%) or cross-validation.
-    \item Libraries (scikit-learn, TensorFlow/Keras, transformers, etc.).
-    \item Hardware (optional): CPU/GPU, RAM.
-    \item Hyperparameters: vectorizer sizes, learning rates, epochs, batch size.
+    \item \textbf{Tweets dataset:} \texttt{ASTD/data/Tweets.txt}, originally labelled with \texttt{POS}, \texttt{NEG}, \texttt{NEUTRAL}, and \texttt{OBJ}. For binary experiments, only \texttt{POS} and \texttt{NEG} are kept and balanced.
+    \item \textbf{Hotel reviews dataset:} \texttt{data/balanced-reviews.txt}, loaded with UTF-16 encoding. Star ratings are mapped as 4--5 $\rightarrow$ \texttt{POS} and 1--2 $\rightarrow$ \texttt{NEG}; rating 3 is dropped if present.
 \end{itemize}
+
+\section{Preprocessing}
+
+Preprocessing is implemented in \texttt{src/preprocessing.py}. Tweets use a tweet-specific pipeline that handles URLs, mentions, hashtags, Arabic normalisation, elongation, punctuation, and optional emoji sentiment tokens. Reviews use a review-specific pipeline that additionally removes decorative quotes copied from table exports. Empty cleaned texts are removed before training.
+
+\section{Data splitting and validation}
+
+The standard split is:
+\begin{itemize}[noitemsep]
+    \item \textbf{80\% training pool} and \textbf{20\% held-out test set};
+    \item \textbf{stratification} is used so positive and negative classes remain balanced in each split;
+    \item method selection and hyperparameter search are performed using cross-validation on the training pool only;
+    \item the held-out test set is used once for final reporting.
+\end{itemize}
+This avoids information leakage from the test set into feature selection or hyperparameter tuning.
+
+\section{Feature extraction and feature selection}
+
+Sparse text features are produced with:
+\begin{itemize}[noitemsep]
+    \item \textbf{BoW} using \texttt{CountVectorizer};
+    \item \textbf{TF---IDF} using \texttt{TfidfVectorizer}, usually with unigrams and bigrams, \texttt{lowercase=False}, \texttt{min\_df}, \texttt{max\_df}, and \texttt{max\_features}.
+\end{itemize}
+Feature selection methods (\texttt{none}, \texttt{chi2}, \texttt{mi}, \texttt{fisher}) are compared with fixed extraction and classifier settings using \texttt{scripts/compare\_feature\_selection.py}. Feature extraction methods are compared with \texttt{scripts/compare\_feature\_extraction.py}.
+
+\section{Models and hyperparameters}
+
+The classical models are \textbf{Multinomial Naive Bayes}, \textbf{Linear SVM}, and \textbf{Logistic Regression}. Hyperparameters such as SVM $C$, TF---IDF vocabulary size, \textit{n}-gram range, and document-frequency thresholds are tuned with \texttt{scripts/gridsearch\_hyperparams.py}. Deep-learning experiments use Keras/TensorFlow CNN and BiLSTM notebooks with token sequences, embedding layers, a fixed maximum sequence length, and a small number of epochs for comparison.
+
+\section{Software environment}
+
+The project uses Python with \texttt{pandas}, \texttt{numpy}, \texttt{scikit-learn}, \texttt{matplotlib}, and \texttt{TensorFlow/Keras} for deep learning. Experiments are organised in reusable modules under \texttt{src/} and command-line scripts under \texttt{scripts/}, while notebooks are kept mostly as readable experiment reports.
 
 % --- 9 ---
 \chapter{Evaluation Metrics}
 
+Evaluation metrics convert predictions into interpretable numbers. In binary sentiment classification, each prediction belongs to one of four cases:
+\begin{itemize}[noitemsep]
+    \item \textbf{TP} (true positive): a positive text predicted as positive;
+    \item \textbf{TN} (true negative): a negative text predicted as negative;
+    \item \textbf{FP} (false positive): a negative text predicted as positive;
+    \item \textbf{FN} (false negative): a positive text predicted as negative.
+\end{itemize}
+
+\section{Confusion Matrix}
+
+A \textbf{confusion matrix} is a table that counts correct and incorrect predictions for each class. For binary sentiment, using \texttt{NEG} as class 0 and \texttt{POS} as class 1, the matrix is
+\[
+\begin{array}{c|cc}
+ & \textbf{Predicted NEG} & \textbf{Predicted POS} \\
+\hline
+\textbf{Actual NEG} & TN & FP \\
+\textbf{Actual POS} & FN & TP
+\end{array}
+\]
+This matrix is the starting point for accuracy, precision, recall, and F$_1$. It is also useful visually: a good model has large values on the diagonal ($TN$, $TP$) and small values off the diagonal ($FP$, $FN$).
+
 \section{Accuracy}
+
+Accuracy measures the proportion of all predictions that are correct:
 \[
     \mathrm{Accuracy} = \frac{\mathrm{TP} + \mathrm{TN}}{\mathrm{TP} + \mathrm{TN} + \mathrm{FP} + \mathrm{FN}}.
 \]
+It is easy to understand, but it can be misleading if classes are imbalanced. For this reason, F$_1$ is also reported.
 
 \section{Precision}
+
+Precision answers: among the texts predicted as positive, how many were truly positive?
 \[
     \mathrm{Precision} = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FP}}.
 \]
+High precision means few negative texts are incorrectly labelled as positive.
 
 \section{Recall}
+
+Recall answers: among all true positive texts, how many did the model find?
 \[
     \mathrm{Recall} = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FN}}.
 \]
+High recall means the model misses few positive examples.
 
 \section{F1-score}
+
+The F$_1$-score is the harmonic mean of precision and recall:
 \[
     F_1 = 2 \times \frac{\mathrm{Precision} \times \mathrm{Recall}}{\mathrm{Precision} + \mathrm{Recall}}.
 \]
+It is especially useful in this project because it balances false positives and false negatives better than accuracy alone.
 
 \section{ROC / AUC}
 
-\section{Confusion Matrix}
+ROC/AUC can be used when a model outputs scores or probabilities. The ROC curve plots true positive rate against false positive rate at different thresholds, and AUC summarises the curve in one value. In this project, AUC is optional because some strong models such as \texttt{LinearSVC} naturally output margins rather than calibrated probabilities.
 
 % --- 10 ---
 \chapter{Results and Discussion}
